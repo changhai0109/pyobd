@@ -1,6 +1,7 @@
 import threading
+import math
 from dataclasses import dataclass, asdict
-from obd import OBD, OBDResponse, commands, OBDStatus
+from obd import OBD, OBDResponse, commands, OBDStatus, Unit
 import board
 import adafruit_adxl34x
 import os
@@ -34,8 +35,9 @@ class CollectedData:
 
 
 def obd_worker(lock, data):
-    os.system(f'rfcomm bind {RF_CHANNEL} {ODB_ADDRESS}')
-    obd = OBD(f"/dev/rfcomm{RF_CHANNEL}", baudrate=38600)
+    if False:
+        os.system(f'rfcomm bind {RF_CHANNEL} {ODB_ADDRESS}')
+    obd = OBD(f"/dev/ttyUSB0", baudrate=500000)
     
     obd_items = {
         "voltage": "CONTROL_MODULE_VOLTAGE",
@@ -49,11 +51,18 @@ def obd_worker(lock, data):
     while True:
         start = time.time()
         for result_name, cmd_name in obd_items.items():
+            retry = 5
             while not obd.is_connected():
-                obd = OBD(f"/dev/rfcomm{RF_CHANNEL}", baudrate=38600)
+            # while False:
+                obd = OBD(f"/dev/ttyUSB0", baudrate=500000)
+                retry -= 1
+                if retry <= 0:
+                    break
+                # print(obd.status())
             response = obd.query(commands[cmd_name])
             with lock:
                 setattr(data, result_name, response)
+            time.sleep(0.2)
         end = time.time()
         duration = end - start
         remain = REFRESH_INTERVAL - duration
@@ -154,6 +163,8 @@ def accel_worker(lock, data):
     while True:
         start = time.time()
         ax, ay, az = accelerometer.acceleration
+        if abs(ax-10) < 1e-3:
+            continue
         ax, ay, az = rebasis_acc(ax, ay, az)
         with lock:
             data.acc_x = float(ax)
@@ -191,6 +202,8 @@ def display_worker(lock, data):
                 value = frozen_data[key]
                 if isinstance(value, OBDResponse):
                     value = value.value
+                if isinstance(value, Unit.Quantity):
+                    value = value.magnitude
                 if isinstance(value, float):
                     text_widget.insert(tk.END, f"{key}\n", "key")
                     text_widget.insert(tk.END, f"{value:.2f}\n", "value")
