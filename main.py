@@ -303,7 +303,7 @@ def display_worker(lock, data):
     text_widgets = []
     for row in range(3):
         for col in range(3):
-            text = tk.Text(root, width=32, height=8)
+            text = tk.Text(root, width=32, height=6)
             text.grid(row=row, column=col)
             text_font = font.Font(family="Helvetica", size=48)
             text_font2 = font.Font(family="Helvetica", size=24)
