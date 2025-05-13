@@ -316,7 +316,7 @@ def display_worker(lock, data):
     button_darkmode.grid(row=3, column=1, text="DarkMode", cmd=darkmode_button_handler)
     button_3 = tk.Button(root, text="N/A")
     button_3.grid(row=3, column=2)
-    update_text_contents()
+    update()
     root.mainloop()
 
 
