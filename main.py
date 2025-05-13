@@ -278,8 +278,11 @@ def display_worker(lock, data):
             color = "orange"
         else:
             color = "red"
-        for text_widget in text_widgets:
-            text_widget.tag_configure("coolant_temp", foreground=color)
+        for i, text_widget in enumerate(text_widgets):
+            key = keys[i]
+            if not key == "coolant_temp":
+                continue
+            text_widget.configure(bg=color)
     def update_text_contents():
         with lock:
             frozen_data = asdict(copy.deepcopy(data))
