@@ -25,6 +25,14 @@ LOGGING_DIR = "/home/changhai/pyobd/obdlog"
 logging_now = False
 darkmode = False
 
+contrast_color_dict = {
+    "purple": "yellow",
+    "blue": "white",
+    "green": "black",
+    "orange": "black",
+    "red": "blue"
+}
+
 @dataclass
 class CollectedData:
     acc_x: float = 0
@@ -282,7 +290,7 @@ def display_worker(lock, data):
             key = keys[i]
             if not key == "coolant_temp":
                 continue
-            text_widget.configure(bg=color)
+            text_widget.configure(bg=color, fg=contrast_color_dict[color])
     def update_text_contents():
         with lock:
             frozen_data = asdict(copy.deepcopy(data))
