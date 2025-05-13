@@ -273,7 +273,12 @@ def display_worker(lock, data):
         with lock:
             frozen_data = asdict(copy.deepcopy(data))
         color = "purple"
-        temp = frozen_data["coolant_temp"]
+        value = frozen_data["coolant_temp"]
+        if isinstance(value, OBDResponse):
+            value = value.value
+        if isinstance(value, Unit.Quantity):
+            value = value.magnitude
+        temp = value
         if temp is None:
             color = "purple"
         elif temp.value is None:
