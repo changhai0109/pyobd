@@ -11,14 +11,19 @@ import copy
 import logging
 import tkinter as tk
 from tkinter import font
+import json
 
 logger = logging.getLogger("obd")
 logger.addHandler(logging.NullHandler())
 
 ODB_ADDRESS = "66:1E:31:00:B4:76"
 RF_CHANNEL = "66"
-REFRESH_INTERVAL = 0.25
+REFRESH_INTERVAL = 0.1
+LOGGING_INTERVAL = 0.1
 ACCEL_CALIBRATION_INTERVAL = 10
+LOGGING_DIR = "/home/pi/obd_log"
+logging_now = False
+darkmode = False
 
 @dataclass
 class CollectedData:
@@ -32,6 +37,49 @@ class CollectedData:
     coolant_temp: OBDResponse = None   # "COOLANT_TEMP"
     intake_temp: OBDResponse = None    # "INTAKE_TEMP"
     throttle_pos: OBDResponse = None   # "THROTTLE_POS"
+
+
+def log_worker(lock, data):
+    global logging_now
+    while True:
+        if not logging_now:
+            time.sleep(1)
+            continue
+        def _serialize():
+            with lock:
+                frozen_data = asdict(copy.deepcopy(data))
+                for key in frozen_data.keys():
+                    value = frozen_data[key]
+                    if isinstance(value, OBDResponse):
+                        value = value.value
+                    if isinstance(value, Unit.Quantity):
+                        value = value.magnitude
+                    frozen_data[key] = value
+                return frozen_data
+            return None
+
+        date_time = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+        os.makedirs(LOGGING_DIR, exist_ok=True)
+        log_file = os.path.join(LOGGING_DIR, f"{date_time}.obdlog")
+        init = time.time()
+        last = time.time()
+        counter = 0
+        with open(log_file, "w") as f:
+            while logging_now:
+                now = time.time()
+                serialized = _serialize()
+                if serialized is None:
+                    continue
+                serialized["timestamp"] = (now - init) * 1e6
+                f.write(json.dumps(serialized) + "\n")
+                counter += 1
+                if counter % 100 == 0:
+                    f.flush()
+                    os.fsync(f.fileno())
+                remains = LOGGING_INTERVAL - (now - last)
+                if remains > 0:
+                    time.sleep(remains)
+                last = now
 
 
 def obd_worker(lock, data):
@@ -192,6 +240,46 @@ def display_worker(lock, data):
     keys = list(asdict(data).keys())
     root = tk.Tk()
     root.title("OBD")
+    def logging_button_handler():
+        global logging_now
+        if logging_now:
+            button_loggin.config(text="Logging")
+            logging_now = False
+        else:
+            button_loggin.config(text="Stop")
+            logging_now = True
+    def darkmode_button_handler():
+        global darkmode
+        if darkmode:
+            root.tk_setPalette(background="white")
+            darkmode = False
+        else:
+            root.tk_setPalette(background="black")
+            darkmode = True
+            
+    def update():
+        coolent_temp_color()
+        update_text_contents()
+        root.after(int(1000*REFRESH_INTERVAL), update)
+    def coolent_temp_color():
+        with lock:
+            frozen_data = asdict(copy.deepcopy(data))
+        color = "black"
+        temp = frozen_data["coolant_temp"]
+        if temp is None:
+            color = "black"
+        elif temp.value is None:
+            color = "black"
+        elif temp.value < 60:
+            color = "blue"
+        elif temp.value < 95:
+            color = "green"
+        elif temp.value < 110:
+            color = "orange"
+        else:
+            color = "red"
+        for text_widget in text_widgets:
+            text_widget.tag_configure("coolant_temp", foreground=color)
     def update_text_contents():
         with lock:
             frozen_data = asdict(copy.deepcopy(data))
@@ -212,7 +300,6 @@ def display_worker(lock, data):
                     text_widget.insert(tk.END, f"{value}\n", "value")
             else:
                 text_widget.insert(tk.END, "")
-        root.after(int(1000*REFRESH_INTERVAL), update_text_contents)
     text_widgets = []
     for row in range(3):
         for col in range(3):
@@ -223,6 +310,12 @@ def display_worker(lock, data):
             text.tag_configure("key", font=text_font2)
             text.tag_configure("value", font=text_font)
             text_widgets.append(text)
+    button_loggin = tk.Button(root, text="Logging", cmd=logging_button_handler)
+    button_loggin.grid(row=3, column=0)
+    button_darkmode = tk.Button(root, text="DarkMode")
+    button_darkmode.grid(row=3, column=1, text="DarkMode", cmd=darkmode_button_handler)
+    button_3 = tk.Button(root, text="N/A")
+    button_3.grid(row=3, column=2)
     update_text_contents()
     root.mainloop()
 
@@ -236,7 +329,8 @@ def main():
     threads = [
         threading.Thread(target=obd_worker, args=(lock, data)),
         threading.Thread(target=accel_worker, args=(lock, data)),
-        threading.Thread(target=display_worker, args=(lock, data))
+        threading.Thread(target=display_worker, args=(lock, data)),
+        threading.Thread(target=log_worker, args=(lock, data)),
     ]
 
     for thread in threads:
