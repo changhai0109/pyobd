@@ -264,12 +264,12 @@ def display_worker(lock, data):
     def coolent_temp_color():
         with lock:
             frozen_data = asdict(copy.deepcopy(data))
-        color = "black"
+        color = "purple"
         temp = frozen_data["coolant_temp"]
         if temp is None:
-            color = "black"
+            color = "purple"
         elif temp.value is None:
-            color = "black"
+            color = "purple"
         elif temp.value < 60:
             color = "blue"
         elif temp.value < 95:
